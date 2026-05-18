@@ -3,7 +3,9 @@ set -u
 
 echo "== Log source detection =="
 AUTH_LOG=""
-if [ -r /var/log/auth.log ]; then
+if [ -n "${AUTH_LOG_FILE:-}" ] && [ -r "${AUTH_LOG_FILE:-}" ]; then
+  AUTH_LOG="$AUTH_LOG_FILE"
+elif [ -r /var/log/auth.log ]; then
   AUTH_LOG="/var/log/auth.log"
 elif [ -r /var/log/secure ]; then
   AUTH_LOG="/var/log/secure"
