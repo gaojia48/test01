@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -144,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
 def interactive_main(use_llm: bool = True) -> int:
     print("Linux Ops Agent 交互模式")
     print("直接输入问题，例如：检查磁盘空间问题")
-    print("输入 list 查看 skills，输入 daily 生成巡检报告，输入 exit 退出。")
+    print("输入 help 查看命令，输入 exit 退出。")
     print()
 
     while True:
@@ -158,8 +159,15 @@ def interactive_main(use_llm: bool = True) -> int:
             continue
         if text in {"exit", "quit", "退出", "q"}:
             return 0
-        if text in {"list", "skills", "技能"}:
+        if text in {"help", "帮助", "?"}:
+            _print_interactive_help()
+            code = 0
+        elif text in {"list", "skills", "技能"}:
             code = main(["--list-skills"])
+        elif text in {"reports", "ls reports", "报告列表"}:
+            code = _list_reports()
+        elif text in {"clear reports", "clean reports", "清空报告", "清除报告"}:
+            code = _clear_reports()
         elif text in {"daily", "report", "巡检", "报告"}:
             args = ["--report", "daily"]
             if not use_llm:
@@ -172,6 +180,52 @@ def interactive_main(use_llm: bool = True) -> int:
             code = main(args)
 
         print(f"\n本次执行完成，退出码：{code}\n")
+
+
+def _print_interactive_help() -> None:
+    print("可用命令：")
+    print("  list              查看 skills")
+    print("  reports           查看已生成报告")
+    print("  clear reports     清空 reports 目录里的报告")
+    print("  daily             生成综合巡检报告")
+    print("  exit              退出")
+    print("也可以直接输入自然语言问题，例如：检查磁盘空间问题")
+
+
+def _list_reports() -> int:
+    reports_dir = PROJECT_ROOT / "reports"
+    if not reports_dir.exists():
+        print("reports 目录还不存在。")
+        return 0
+
+    reports = sorted(reports_dir.glob("*.md"), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not reports:
+        print("reports 目录里没有报告。")
+        return 0
+
+    for path in reports:
+        size_kb = path.stat().st_size / 1024
+        print(f"- {path.name} ({size_kb:.1f} KB)")
+    return 0
+
+
+def _clear_reports() -> int:
+    reports_dir = PROJECT_ROOT / "reports"
+    if not reports_dir.exists():
+        print("reports 目录还不存在。")
+        return 0
+
+    removed = 0
+    for path in reports_dir.glob("*.md"):
+        path.unlink()
+        removed += 1
+
+    test_output = reports_dir / "test-output"
+    if test_output.exists():
+        shutil.rmtree(test_output)
+
+    print(f"已清除 {removed} 个报告文件。")
+    return 0
 
 
 if __name__ == "__main__":
