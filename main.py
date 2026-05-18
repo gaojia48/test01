@@ -166,6 +166,8 @@ def interactive_main(use_llm: bool = True) -> int:
             code = main(["--list-skills"])
         elif text in {"reports", "ls reports", "报告列表"}:
             code = _list_reports()
+        elif text in {"last report", "last", "latest report", "最新报告", "查看最新报告"}:
+            code = _show_last_report()
         elif text in {"clear reports", "clean reports", "清空报告", "清除报告"}:
             code = _clear_reports()
         elif text in {"daily", "report", "巡检", "报告"}:
@@ -186,6 +188,7 @@ def _print_interactive_help() -> None:
     print("可用命令：")
     print("  list              查看 skills")
     print("  reports           查看已生成报告")
+    print("  last report       查看最新报告内容")
     print("  clear reports     清空 reports 目录里的报告")
     print("  daily             生成综合巡检报告")
     print("  exit              退出")
@@ -207,6 +210,27 @@ def _list_reports() -> int:
         size_kb = path.stat().st_size / 1024
         print(f"- {path.name} ({size_kb:.1f} KB)")
     return 0
+
+
+def _show_last_report() -> int:
+    report = _find_latest_report(PROJECT_ROOT / "reports")
+    if not report:
+        print("reports 目录里没有报告。")
+        return 0
+
+    print(f"最新报告：{report.name}")
+    print()
+    print(report.read_text(encoding="utf-8"))
+    return 0
+
+
+def _find_latest_report(reports_dir: Path) -> Path | None:
+    if not reports_dir.exists():
+        return None
+    reports = [path for path in reports_dir.glob("*.md") if path.is_file()]
+    if not reports:
+        return None
+    return max(reports, key=lambda path: path.stat().st_mtime)
 
 
 def _clear_reports() -> int:
