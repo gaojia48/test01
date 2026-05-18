@@ -10,6 +10,7 @@ class DeepSeekClient:
     def __init__(self, config: DeepSeekConfig):
         _load_dotenv_if_available()
         _load_dotenv_manually(Path.cwd() / ".env")
+        _sanitize_proxy_env()
         self.config = config
         self.api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
         self.model = os.getenv("DEEPSEEK_MODEL", config.model).strip() or config.model
@@ -84,3 +85,11 @@ def _load_dotenv_manually(path: Path) -> None:
         value = value.strip().strip('"').strip("'")
         if key and key not in os.environ:
             os.environ[key] = value
+
+
+def _sanitize_proxy_env() -> None:
+    has_http_proxy = bool(os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy"))
+    for key in ("ALL_PROXY", "all_proxy"):
+        value = os.environ.get(key, "")
+        if value.lower().startswith("socks://") and has_http_proxy:
+            os.environ.pop(key, None)
