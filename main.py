@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -17,7 +18,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Linux 运维诊断 Agent Skills 系统")
-    parser.add_argument("request", nargs="?", help="自然语言运维问题，例如：检查磁盘空间问题")
+    parser.add_argument("request", nargs="*", help="自然语言运维问题，例如：检查磁盘空间问题")
+    parser.add_argument("--interactive", "-i", action="store_true", help="进入交互模式，连续输入运维问题")
     parser.add_argument("--list-skills", action="store_true", help="列出可用 skills")
     parser.add_argument("--skill", help="直接执行指定 skill")
     parser.add_argument("--report", choices=["daily"], help="生成固定巡检报告")
@@ -32,6 +34,9 @@ def list_skills(skills) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.interactive:
+        return interactive_main(use_llm=not args.no_llm)
+
     config = load_config(PROJECT_ROOT)
     skills = load_skills(PROJECT_ROOT)
 
@@ -39,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
         list_skills(skills)
         return 0
 
-    user_request = args.request or ""
+    user_request = " ".join(args.request).strip()
     selected_names: tuple[str, ...]
     plan = None
     use_llm = not args.no_llm
@@ -123,6 +128,39 @@ def main(argv: list[str] | None = None) -> int:
     print(f"报告已生成：{report_path}")
     print(report_path.read_text(encoding="utf-8")[:4000])
     return 0 if all(result.ok for result in results) else 1
+
+
+def interactive_main(use_llm: bool = True) -> int:
+    print("Linux Ops Agent 交互模式")
+    print("直接输入问题，例如：检查磁盘空间问题")
+    print("输入 list 查看 skills，输入 daily 生成巡检报告，输入 exit 退出。")
+    print()
+
+    while True:
+        try:
+            text = input("ops> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+
+        if not text:
+            continue
+        if text in {"exit", "quit", "退出", "q"}:
+            return 0
+        if text in {"list", "skills", "技能"}:
+            code = main(["--list-skills"])
+        elif text in {"daily", "report", "巡检", "报告"}:
+            args = ["--report", "daily"]
+            if not use_llm:
+                args.append("--no-llm")
+            code = main(args)
+        else:
+            args = [text]
+            if not use_llm:
+                args.append("--no-llm")
+            code = main(args)
+
+        print(f"\n本次执行完成，退出码：{code}\n")
 
 
 if __name__ == "__main__":

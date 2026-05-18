@@ -46,6 +46,27 @@ DEEPSEEK_API_KEY=你的key
 
 ## 运行
 
+推荐使用便捷入口：
+
+```bash
+./ops
+```
+
+进入交互模式后直接输入中文问题，不需要引号：
+
+```text
+ops> 检查磁盘空间问题
+ops> 分析最近 SSH 登录失败
+ops> daily
+ops> exit
+```
+
+也可以单次运行：
+
+```bash
+./ops 检查磁盘空间问题
+```
+
 查看 skills：
 
 ```bash
