@@ -87,8 +87,19 @@ def main(argv: list[str] | None = None) -> int:
 
     selected_skills = [skills[name] for name in selected_names if name in skills]
     if not selected_skills:
-        print("No executable skills were selected.", file=sys.stderr)
-        return 1
+        print(f"请求：{user_request}")
+        print(f"选择方式：{plan.source}")
+        print(f"选择原因：{plan.reason}")
+        print("执行 skills：无")
+        if plan.answer:
+            print()
+            print(plan.answer)
+        else:
+            print()
+            print("没有匹配到明确的 Linux 运维 skill，因此没有执行任何脚本。")
+            if use_llm and llm_client.last_error:
+                print(f"DeepSeek 普通回答不可用：{llm_client.last_error}")
+        return 0
 
     print(f"请求：{user_request}")
     print(f"选择方式：{plan.source}")

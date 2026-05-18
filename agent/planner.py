@@ -28,6 +28,7 @@ class Plan:
     refused: bool = False
     refusal_reason: str = ""
     source: str = "keyword"
+    answer: str = ""
 
 
 class Planner:
@@ -73,9 +74,13 @@ class Planner:
             for skill in self.skills.values()
         ]
         prompt = (
-            "你是 Linux 运维 Agent。你只能从给定 skills 中选择 skill，禁止输出任意 Shell 命令。\n"
+            "你是 Linux 运维 Agent 路由器。你只能从给定 skills 中选择 skill，禁止输出任意 Shell 命令。\n"
+            "只有用户明确提出 Linux 运维诊断、巡检、日志、进程、网络、磁盘等需求时，才选择 skill。\n"
+            "如果用户输入无意义内容、闲聊、普通知识问题，或者没有明确触发任何 skill，必须返回空 skills，"
+            "并在 answer 字段中正常回答用户。不要为了有结果而默认选择 health_report。\n"
             "必须只返回 JSON，格式为："
-            '{"skills":["disk_check"],"reason":"用户想检查磁盘空间"}。\n'
+            '{"skills":["disk_check"],"reason":"用户想检查磁盘空间","answer":""} '
+            '或 {"skills":[],"reason":"未触发运维 skill","answer":"你的回答"}。\n'
             f"最多选择 {self.max_skills} 个 skill。\n"
             f"可用 skills: {json.dumps(skill_catalog, ensure_ascii=False)}\n"
             f"用户请求: {user_request}"
@@ -94,9 +99,14 @@ class Planner:
                     reason=str(parsed.get("reason", "DeepSeek selected matching skills")),
                     source="deepseek",
                 )
+            return Plan(
+                skills=(),
+                reason=str(parsed.get("reason", "DeepSeek 未选择可执行 skill")),
+                source="deepseek",
+                answer=str(parsed.get("answer", "")).strip(),
+            )
         except Exception:
             return None
-        return None
 
     def _plan_with_keywords(self, user_request: str) -> Plan:
         lowered = user_request.lower()
@@ -113,8 +123,7 @@ class Planner:
                 scores.append((score, skill.name))
 
         if not scores:
-            default = "health_report" if "health_report" in self.skills else sorted(self.skills)[0]
-            return Plan(skills=(default,), reason="未命中明确关键词，默认执行综合巡检", source="keyword")
+            return Plan(skills=(), reason="未命中明确关键词，不执行任何 skill", source="keyword")
 
         selected = tuple(name for _, name in sorted(scores, reverse=True)[: self.max_skills])
         return Plan(skills=selected, reason="本地关键词匹配选择 skill", source="keyword")
