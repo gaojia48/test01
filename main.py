@@ -70,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
             max_skills=config.agent.max_skills_per_request,
         )
         plan = planner.plan(user_request, use_llm=use_llm)
+        if use_llm and plan.source != "deepseek":
+            if llm_client.last_error:
+                print(f"DeepSeek 未启用，已回退本地模式：{llm_client.last_error}")
+            elif not llm_client.available:
+                print("DeepSeek 未启用，已回退本地模式：没有读取到 DEEPSEEK_API_KEY")
         if plan.refused:
             print(f"拒绝执行：{plan.refusal_reason}")
             return 1

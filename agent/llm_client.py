@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from agent.config import DeepSeekConfig
 
@@ -8,11 +9,13 @@ from agent.config import DeepSeekConfig
 class DeepSeekClient:
     def __init__(self, config: DeepSeekConfig):
         _load_dotenv_if_available()
+        _load_dotenv_manually(Path.cwd() / ".env")
         self.config = config
         self.api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
         self.model = os.getenv("DEEPSEEK_MODEL", config.model).strip() or config.model
         self.base_url = os.getenv("DEEPSEEK_BASE_URL", config.base_url).strip() or config.base_url
         self._client = None
+        self.last_error = ""
 
     @property
     def available(self) -> bool:
@@ -20,14 +23,19 @@ class DeepSeekClient:
 
     def _ensure_client(self):
         if self._client is None:
-            from openai import OpenAI
+            try:
+                from openai import OpenAI
+            except ImportError as exc:
+                self.last_error = "当前 Python 环境未安装 openai，请先执行：python3 -m pip install -r requirements.txt"
+                raise RuntimeError(self.last_error) from exc
 
             self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         return self._client
 
     def complete(self, prompt: str, system: str | None = None) -> str:
         if not self.available:
-            raise RuntimeError("DEEPSEEK_API_KEY is not configured")
+            self.last_error = "没有读取到 DEEPSEEK_API_KEY，请检查 .env 是否在项目根目录"
+            raise RuntimeError(self.last_error)
 
         client = self._ensure_client()
         messages = []
@@ -62,3 +70,17 @@ def _load_dotenv_if_available() -> None:
     except ImportError:
         return
     load_dotenv()
+
+
+def _load_dotenv_manually(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
