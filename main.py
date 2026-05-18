@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -50,6 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     plan = None
     use_llm = not args.no_llm
     llm_client = DeepSeekClient(config.deepseek)
+
+    if user_request.lower() in {"doctor", "check env", "自检", "环境检查"}:
+        return _run_doctor()
 
     if args.skill:
         if args.skill not in skills:
@@ -168,6 +173,8 @@ def interactive_main(use_llm: bool = True) -> int:
             code = _list_reports()
         elif text in {"last report", "last", "latest report", "最新报告", "查看最新报告"}:
             code = _show_last_report()
+        elif text in {"doctor", "check env", "自检", "环境检查"}:
+            code = _run_doctor()
         elif text in {"clear reports", "clean reports", "清空报告", "清除报告"}:
             code = _clear_reports()
         elif text in {"daily", "report", "巡检", "报告"}:
@@ -189,6 +196,7 @@ def _print_interactive_help() -> None:
     print("  list              查看 skills")
     print("  reports           查看已生成报告")
     print("  last report       查看最新报告内容")
+    print("  doctor            检查运行环境和配置")
     print("  clear reports     清空 reports 目录里的报告")
     print("  daily             生成综合巡检报告")
     print("  exit              退出")
@@ -231,6 +239,70 @@ def _find_latest_report(reports_dir: Path) -> Path | None:
     if not reports:
         return None
     return max(reports, key=lambda path: path.stat().st_mtime)
+
+
+def _run_doctor() -> int:
+    print("Linux Ops Agent 环境自检")
+    print()
+
+    checks: list[tuple[str, bool, str]] = []
+    checks.append(("Python 版本", sys.version_info >= (3, 10), sys.version.split()[0]))
+    checks.append(("项目目录", PROJECT_ROOT.exists(), str(PROJECT_ROOT)))
+
+    config_ok = True
+    try:
+        config = load_config(PROJECT_ROOT)
+        checks.append(("config.yaml", True, "已加载"))
+    except Exception as exc:
+        config_ok = False
+        config = None
+        checks.append(("config.yaml", False, str(exc)))
+
+    try:
+        skills = load_skills(PROJECT_ROOT)
+        checks.append(("skills 配置", True, f"{len(skills)} 个 skill"))
+    except Exception as exc:
+        skills = {}
+        checks.append(("skills 配置", False, str(exc)))
+
+    for module in ("openai", "dotenv", "yaml", "pytest"):
+        checks.append((f"Python 依赖 {module}", importlib.util.find_spec(module) is not None, module))
+
+    if config_ok and config:
+        llm_client = DeepSeekClient(config.deepseek)
+        checks.append(("DeepSeek API Key", llm_client.available, "已读取" if llm_client.available else "未读取"))
+        checks.append(("DeepSeek base_url", bool(llm_client.base_url), llm_client.base_url))
+        checks.append(("DeepSeek model", bool(llm_client.model), llm_client.model))
+
+    proxy_parts = []
+    for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        value = os.environ.get(key)
+        if value:
+            proxy_parts.append(f"{key}={value}")
+    checks.append(("代理环境变量", True, "; ".join(proxy_parts) if proxy_parts else "未设置"))
+
+    for command in ("bash", "df", "du", "find", "grep", "sed", "awk", "ps", "ss", "ip", "ping", "journalctl"):
+        checks.append((f"Linux 命令 {command}", shutil.which(command) is not None, shutil.which(command) or "未找到"))
+
+    scripts_dir = PROJECT_ROOT / "scripts"
+    script_paths = sorted(scripts_dir.glob("*.sh"))
+    checks.append(("scripts 目录", bool(script_paths), f"{len(script_paths)} 个脚本"))
+    for script in script_paths:
+        checks.append((f"脚本可执行 {script.name}", os.access(script, os.X_OK), str(script)))
+
+    failed = 0
+    for name, ok, detail in checks:
+        mark = "OK" if ok else "FAIL"
+        if not ok:
+            failed += 1
+        print(f"[{mark}] {name}: {detail}")
+
+    print()
+    if failed:
+        print(f"自检完成：发现 {failed} 个问题。")
+        return 1
+    print("自检完成：环境看起来正常。")
+    return 0
 
 
 def _clear_reports() -> int:
