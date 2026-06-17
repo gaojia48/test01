@@ -17,7 +17,7 @@ class PlannerTest(unittest.TestCase):
         self.assertFalse(plan.refused)
         self.assertIn("disk_check", plan.skills)
         self.assertNotIn("health_report", plan.skills)
-        self.assertEqual(plan.source, "keyword")
+        self.assertEqual(plan.source, "local_model")
 
     def test_keyword_planner_selects_log_analyze(self):
         planner = Planner(load_skills(PROJECT_ROOT))
@@ -26,6 +26,14 @@ class PlannerTest(unittest.TestCase):
 
         self.assertFalse(plan.refused)
         self.assertIn("log_analyze", plan.skills)
+
+    def test_keyword_planner_selects_auto_inspect(self):
+        planner = Planner(load_skills(PROJECT_ROOT))
+
+        plan = planner.plan("帮我做一次自动巡检和系统体检", use_llm=False)
+
+        self.assertFalse(plan.refused)
+        self.assertIn("auto_inspect", plan.skills)
 
     def test_planner_refuses_dangerous_request(self):
         planner = Planner(load_skills(PROJECT_ROOT))
@@ -43,7 +51,7 @@ class PlannerTest(unittest.TestCase):
 
         self.assertFalse(plan.refused)
         self.assertFalse(plan.skills)
-        self.assertEqual(plan.source, "keyword")
+        self.assertIn(plan.source, {"local_model", "keyword"})
         self.assertIn("不执行任何 skill", plan.reason)
 
     def test_llm_planner_can_return_normal_answer_without_skills(self):

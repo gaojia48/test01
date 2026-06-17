@@ -64,6 +64,24 @@ class DeepSeekClient:
         )
         return self.complete(prompt, system=system)
 
+    def analyze_operations_text(self, text: str, analysis_type: str, source_name: str) -> str:
+        system = (
+            "你是一个严谨的 Linux 运维文本分析助手。用户会提供大量日志、命令输出、报错信息、配置片段或事故聊天记录。"
+            "你的任务不是泛泛总结，而是提取真正有诊断价值的信号。"
+            "必须用中文 Markdown 输出，并包含：问题概览、关键证据、可能根因、建议执行的排查命令、处理建议、风险提示。"
+            "所有结论都必须引用输入文本中的证据；如果证据不足，要明确写出不确定性，不要编造系统状态。"
+            "不要建议直接执行删除、格式化、重启整机等高风险操作；如需修复，优先给备份、验证、回滚思路。"
+        )
+        prompt = (
+            f"分析类型：{analysis_type}\n"
+            f"来源：{source_name}\n\n"
+            "请分析以下运维文本：\n"
+            "```text\n"
+            f"{text[:24000]}\n"
+            "```"
+        )
+        return self.complete(prompt, system=system)
+
 
 def _load_dotenv_if_available() -> None:
     try:

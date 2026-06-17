@@ -36,7 +36,9 @@ class SkillExecutor:
 
     def _validate(self, skill: Skill) -> None:
         script = skill.script.resolve()
-        if not str(script).startswith(str(self.scripts_root) + "/"):
+        try:
+            script.relative_to(self.scripts_root)
+        except ValueError:
             raise UnsafeSkillError(f"skill script must be under scripts/: {skill.script}")
         if skill.risk_level == "high" and not self.config.allow_high_risk:
             raise UnsafeSkillError(f"high-risk skill is disabled by config: {skill.name}")
@@ -70,4 +72,13 @@ class SkillExecutor:
                 exit_code=124,
                 duration_seconds=time.monotonic() - started,
                 timed_out=True,
+            )
+        except FileNotFoundError as exc:
+            return ExecutionResult(
+                skill_name=skill.name,
+                script=skill.script,
+                stdout="",
+                stderr=f"Required command not found: {exc.filename or 'bash'}",
+                exit_code=127,
+                duration_seconds=time.monotonic() - started,
             )

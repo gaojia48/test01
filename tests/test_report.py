@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import unittest
 
 from agent.config import ExecutionConfig
@@ -13,6 +14,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 class ReportTest(unittest.TestCase):
     def test_create_report_without_llm(self):
+        if shutil.which("bash") is None:
+            self.skipTest("bash is required to run shell skills")
         tmp_path = PROJECT_ROOT / "reports" / "test-output"
         skills = load_skills(PROJECT_ROOT)
         skill = skills["process_check"]

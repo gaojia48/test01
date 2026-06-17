@@ -12,7 +12,7 @@ class SkillLoaderTest(unittest.TestCase):
         skills = load_skills(PROJECT_ROOT)
 
         self.assertLessEqual(
-            {"disk_check", "log_analyze", "process_check", "network_check", "health_report"},
+            {"disk_check", "log_analyze", "process_check", "network_check", "health_report", "auto_inspect"},
             set(skills),
         )
         self.assertEqual(skills["disk_check"].script.name, "disk_check.sh")

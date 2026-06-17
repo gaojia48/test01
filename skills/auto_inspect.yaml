@@ -1,0 +1,42 @@
+name: auto_inspect
+description: 自动巡检系统关键状态，集中采集系统概览、磁盘、进程、网络、服务、日志和安全登录线索
+script: scripts/auto_inspect.sh
+risk_level: low
+keywords:
+  - auto
+  - inspect
+  - patrol
+  - audit
+  - checkup
+  - 自动巡检
+  - 自动检查
+  - 全面检查
+  - 一键巡检
+  - 系统体检
+  - 健康检查
+  - 综合诊断
+inputs: {}
+allowed_commands:
+  - bash
+  - date
+  - hostname
+  - uptime
+  - who
+  - last
+  - df
+  - du
+  - find
+  - free
+  - ps
+  - top
+  - ss
+  - ip
+  - systemctl
+  - journalctl
+  - grep
+  - awk
+  - sed
+  - sort
+  - uniq
+  - head
+  - tail

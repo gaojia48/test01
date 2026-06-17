@@ -14,6 +14,9 @@ from agent.llm_client import DeepSeekClient
 from agent.planner import Planner
 from agent.report import create_report
 from agent.skill_loader import load_skills
+from agent.static_report import export_report_center
+from agent.text_analysis import analyze_text, write_analysis_report
+from agent.web_app import run_web_app
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -26,7 +29,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--list-skills", action="store_true", help="列出可用 skills")
     parser.add_argument("--skill", help="直接执行指定 skill")
     parser.add_argument("--report", choices=["daily"], help="生成固定巡检报告")
+    parser.add_argument("--analyze-file", type=Path, help="分析日志、命令输出、配置片段或事故记录文件")
+    parser.add_argument("--analyze-stdin", action="store_true", help="从标准输入读取大量运维文本并分析")
+    parser.add_argument("--analyze-text", help="直接分析一段运维文本")
+    parser.add_argument("--analyze-shell", action="store_true", help="进入分析模式 Shell，粘贴多行文本后输入 END 开始分析")
+    parser.add_argument("--web", action="store_true", help="启动 Web 页面，用于粘贴文本分析和查看报告")
+    parser.add_argument("--web-host", default="127.0.0.1", help="Web 监听地址，服务器演示可用 0.0.0.0")
+    parser.add_argument("--web-port", type=int, default=8000, help="Web 监听端口")
+    parser.add_argument("--export-html", action="store_true", help="导出静态 HTML 报告中心到 reports/index.html")
+    parser.add_argument(
+        "--analysis-type",
+        default="auto",
+        choices=["auto", "log", "command", "config", "incident", "error"],
+        help="运维文本类型，用于指导 DeepSeek 或本地规则分析",
+    )
     parser.add_argument("--no-llm", action="store_true", help="禁用 DeepSeek，使用本地关键词模式")
+    parser.add_argument("--cloud-llm", action="store_true", help="启用 DeepSeek 云端增强；默认使用本地运维模型")
     return parser
 
 
@@ -37,21 +55,51 @@ def list_skills(skills) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    use_llm = args.cloud_llm and not args.no_llm
     if args.interactive:
-        return interactive_main(use_llm=not args.no_llm)
+        return interactive_main(use_llm=use_llm)
 
     config = load_config(PROJECT_ROOT)
     skills = load_skills(PROJECT_ROOT)
+    llm_client = DeepSeekClient(config.deepseek)
 
     if args.list_skills:
         list_skills(skills)
         return 0
 
+    if args.web:
+        run_web_app(args.web_host, args.web_port, config, llm_client, skills)
+        return 0
+
+    if args.export_html:
+        html_path = export_report_center(config.execution.reports_dir)
+        print(f"HTML 报告中心已生成：{html_path}")
+        return 0
+
+    if args.analyze_shell:
+        return _analysis_shell(
+            config=config,
+            llm_client=llm_client,
+            use_llm=use_llm,
+            skills=skills,
+            analysis_type=args.analysis_type,
+        )
+
+    if args.analyze_file or args.analyze_stdin or args.analyze_text:
+        return _run_text_analysis(
+            analyze_file=args.analyze_file,
+            analyze_stdin=args.analyze_stdin,
+            analyze_text_value=args.analyze_text,
+            analysis_type=args.analysis_type,
+            config=config,
+            llm_client=llm_client,
+            use_llm=use_llm,
+            skills=skills,
+        )
+
     user_request = " ".join(args.request).strip()
     selected_names: tuple[str, ...]
     plan = None
-    use_llm = not args.no_llm
-    llm_client = DeepSeekClient(config.deepseek)
 
     if user_request.lower() in {"doctor", "check env", "自检", "环境检查"}:
         return _run_doctor()
@@ -143,6 +191,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print()
     print(f"报告已生成：{report_path}")
+    html_path = export_report_center(config.execution.reports_dir)
+    print(f"HTML 报告中心已更新：{html_path}")
     print(report_path.read_text(encoding="utf-8")[:4000])
     return 0 if all(result.ok for result in results) else 1
 
@@ -179,13 +229,23 @@ def interactive_main(use_llm: bool = True) -> int:
             code = _clear_reports()
         elif text in {"daily", "report", "巡检", "报告"}:
             args = ["--report", "daily"]
-            if not use_llm:
-                args.append("--no-llm")
+            args.append("--cloud-llm" if use_llm else "--no-llm")
+            code = main(args)
+        elif text in {"analysis shell", "analyze shell", "local shell"}:
+            code = main(["--analyze-shell", "--no-llm"])
+        elif text in {"deepseek shell", "cloud shell"}:
+            code = main(["--analyze-shell", "--cloud-llm"])
+        elif text.startswith("analyze "):
+            args = ["--analyze-file", text.removeprefix("analyze ").strip()]
+            args.append("--cloud-llm" if use_llm else "--no-llm")
+            code = main(args)
+        elif text.startswith("analyze-text "):
+            args = ["--analyze-text", text.removeprefix("analyze-text ").strip()]
+            args.append("--cloud-llm" if use_llm else "--no-llm")
             code = main(args)
         else:
             args = [text]
-            if not use_llm:
-                args.append("--no-llm")
+            args.append("--cloud-llm" if use_llm else "--no-llm")
             code = main(args)
 
         print(f"\n本次执行完成，退出码：{code}\n")
@@ -199,8 +259,119 @@ def _print_interactive_help() -> None:
     print("  doctor            检查运行环境和配置")
     print("  clear reports     清空 reports 目录里的报告")
     print("  daily             生成综合巡检报告")
+    print("  analyze <file>    分析日志、命令输出、配置片段或事故记录文件")
+    print("  analyze-text <文本> 分析一段报错、命令输出或日志文本")
+    print("  analyze-shell     进入粘贴分析模式，输入 END 开始分析")
+    print("  deepseek shell    进入 DeepSeek 粘贴分析模式")
     print("  exit              退出")
     print("也可以直接输入自然语言问题，例如：检查磁盘空间问题")
+
+
+def _analysis_shell(
+    config,
+    llm_client: DeepSeekClient,
+    use_llm: bool,
+    skills,
+    analysis_type: str = "auto",
+) -> int:
+    mode_name = "DeepSeek" if use_llm else "local"
+    current_type = analysis_type
+    print(f"Analysis shell started ({mode_name} mode).")
+    print("Paste logs, command output, errors, config, or incident notes.")
+    print("Type END on its own line to analyze. Type 'type log|command|config|incident|error|auto' to switch type.")
+    print("Type exit to quit.")
+    print()
+
+    buffer: list[str] = []
+    while True:
+        try:
+            line = input(f"{mode_name}:{current_type}> ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+
+        stripped = line.strip()
+        if stripped in {"exit", "quit", "q"}:
+            return 0
+        if stripped.startswith("type "):
+            requested = stripped.removeprefix("type ").strip()
+            if requested in {"auto", "log", "command", "config", "incident", "error"}:
+                current_type = requested
+                print(f"analysis type switched to {current_type}")
+            else:
+                print("Unknown type. Use auto, log, command, config, incident, or error.")
+            continue
+        if stripped == "END":
+            text = "\n".join(buffer).strip()
+            buffer.clear()
+            if not text:
+                print("No text collected.")
+                continue
+            analysis = analyze_text(
+                text,
+                analysis_type=current_type,
+                source_name="analysis-shell",
+                llm_client=llm_client,
+                use_llm=use_llm,
+                skills=skills,
+            )
+            report_path = write_analysis_report(analysis, config.execution.reports_dir)
+            html_path = export_report_center(config.execution.reports_dir)
+            print(f"Report generated: {report_path}")
+            print(f"HTML report center updated: {html_path}")
+            print(report_path.read_text(encoding="utf-8")[:4000])
+            print()
+            continue
+
+        buffer.append(line)
+
+
+def _run_text_analysis(
+    analyze_file: Path | None,
+    analyze_stdin: bool,
+    analyze_text_value: str | None,
+    analysis_type: str,
+    config,
+    llm_client: DeepSeekClient,
+    use_llm: bool,
+    skills,
+) -> int:
+    selected = sum(bool(item) for item in (analyze_file, analyze_stdin, analyze_text_value))
+    if selected != 1:
+        print("Please provide exactly one of --analyze-file, --analyze-stdin, or --analyze-text.", file=sys.stderr)
+        return 2
+
+    source_name = "stdin"
+    if analyze_file:
+        source_name = str(analyze_file)
+        if not analyze_file.exists() or not analyze_file.is_file():
+            print(f"Analysis file not found: {analyze_file}", file=sys.stderr)
+            return 2
+        text = analyze_file.read_text(encoding="utf-8", errors="replace")
+    elif analyze_stdin:
+        text = sys.stdin.read()
+    else:
+        source_name = "inline text"
+        text = analyze_text_value or ""
+
+    if not text.strip():
+        print("No analysis text was provided.", file=sys.stderr)
+        return 2
+
+    analysis = analyze_text(
+        text,
+        analysis_type=analysis_type,
+        source_name=source_name,
+        llm_client=llm_client,
+        use_llm=use_llm,
+        skills=skills,
+    )
+    report_path = write_analysis_report(analysis, config.execution.reports_dir)
+    html_path = export_report_center(config.execution.reports_dir)
+    print(f"文本分析报告已生成：{report_path}")
+    print(f"HTML 报告中心已更新：{html_path}")
+    print(report_path.read_text(encoding="utf-8")[:4000])
+    return 0
 
 
 def _list_reports() -> int:

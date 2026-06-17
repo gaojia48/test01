@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 
 from agent.llm_client import DeepSeekClient
+from agent.local_model import understand_operations_text
 from agent.skill_loader import Skill
 
 
@@ -52,6 +53,10 @@ class Planner:
                 source="safety",
             )
 
+        local_plan = self._plan_with_local_model(user_request)
+        if local_plan.skills:
+            return local_plan
+
         if use_llm and self.llm_client and self.llm_client.available:
             llm_plan = self._plan_with_llm(user_request)
             if llm_plan:
@@ -62,6 +67,24 @@ class Planner:
     def _looks_dangerous(self, text: str) -> bool:
         lowered = text.lower()
         return any(re.search(pattern, lowered) for pattern in DANGEROUS_PATTERNS)
+
+    def _plan_with_local_model(self, user_request: str) -> Plan:
+        understanding = understand_operations_text(
+            user_request,
+            skills=self.skills,
+            max_skills=self.max_skills,
+        )
+        if not understanding.selected_skills:
+            return Plan(
+                skills=(),
+                reason=understanding.reason,
+                source="local_model",
+            )
+        return Plan(
+            skills=understanding.selected_skills,
+            reason=f"{understanding.reason}；置信度 {understanding.confidence:.2f}",
+            source="local_model",
+        )
 
     def _plan_with_llm(self, user_request: str) -> Plan | None:
         skill_catalog = [

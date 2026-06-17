@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import unittest
 
 from agent.config import ExecutionConfig
@@ -15,6 +16,8 @@ def _config(tmp_path: Path) -> ExecutionConfig:
 
 class ExecutorTest(unittest.TestCase):
     def test_executor_runs_disk_check(self):
+        if shutil.which("bash") is None:
+            self.skipTest("bash is required to run shell skills")
         tmp_path = PROJECT_ROOT / "reports" / "test-output"
         skills = load_skills(PROJECT_ROOT)
         executor = SkillExecutor(PROJECT_ROOT, _config(tmp_path))
