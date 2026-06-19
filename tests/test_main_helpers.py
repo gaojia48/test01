@@ -1,12 +1,33 @@
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import time
 import unittest
 
-from main import _find_latest_report
+from main import _find_latest_report, _resolve_use_llm
 
 
 class MainHelpersTest(unittest.TestCase):
+    def test_resolve_use_llm_defaults_to_api_key_availability(self):
+        args = SimpleNamespace(no_llm=False, cloud_llm=False)
+
+        self.assertTrue(_resolve_use_llm(args, SimpleNamespace(available=True)))
+        self.assertFalse(_resolve_use_llm(args, SimpleNamespace(available=False)))
+
+    def test_resolve_use_llm_flags_override_default(self):
+        self.assertFalse(
+            _resolve_use_llm(
+                SimpleNamespace(no_llm=True, cloud_llm=True),
+                SimpleNamespace(available=True),
+            )
+        )
+        self.assertTrue(
+            _resolve_use_llm(
+                SimpleNamespace(no_llm=False, cloud_llm=True),
+                SimpleNamespace(available=False),
+            )
+        )
+
     def test_find_latest_report_returns_none_when_empty(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertIsNone(_find_latest_report(Path(tmp)))

@@ -43,8 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["auto", "log", "command", "config", "incident", "error"],
         help="运维文本类型，用于指导 DeepSeek 或本地规则分析",
     )
-    parser.add_argument("--no-llm", action="store_true", help="禁用 DeepSeek，使用本地关键词模式")
-    parser.add_argument("--cloud-llm", action="store_true", help="启用 DeepSeek 云端增强；默认使用本地运维模型")
+    parser.add_argument("--no-llm", action="store_true", help="禁用 DeepSeek，强制使用本地模式")
+    parser.add_argument("--cloud-llm", action="store_true", help="强制启用 DeepSeek 云端增强；默认有 API Key 时自动启用")
     return parser
 
 
@@ -55,13 +55,13 @@ def list_skills(skills) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    use_llm = args.cloud_llm and not args.no_llm
-    if args.interactive:
-        return interactive_main(use_llm=use_llm)
-
     config = load_config(PROJECT_ROOT)
     skills = load_skills(PROJECT_ROOT)
     llm_client = DeepSeekClient(config.deepseek)
+    use_llm = _resolve_use_llm(args, llm_client)
+
+    if args.interactive:
+        return interactive_main(use_llm=use_llm)
 
     if args.list_skills:
         list_skills(skills)
@@ -197,8 +197,17 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if all(result.ok for result in results) else 1
 
 
+def _resolve_use_llm(args: argparse.Namespace, llm_client: DeepSeekClient) -> bool:
+    if args.no_llm:
+        return False
+    if args.cloud_llm:
+        return True
+    return llm_client.available
+
+
 def interactive_main(use_llm: bool = True) -> int:
     print("Linux Ops Agent 交互模式")
+    print(f"分析模式：{'DeepSeek 云端增强' if use_llm else '本地运维模型'}")
     print("直接输入问题，例如：检查磁盘空间问题")
     print("输入 help 查看命令，输入 exit 退出。")
     print()

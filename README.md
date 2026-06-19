@@ -1,6 +1,6 @@
 # Linux Ops Agent
 
-Linux Ops Agent 是一个面向 Linux 运维场景的诊断与文本解读工具。项目默认使用内置的本地运维模型完成意图识别、skill 推荐、日志/命令输出解读；DeepSeek 只作为可选云端增强。
+Linux Ops Agent 是一个面向 Linux 运维场景的诊断与文本解读工具。项目会自动读取 `.env` 或环境变量中的 `DEEPSEEK_API_KEY`；如果存在 API Key，默认启用 DeepSeek 云端增强，否则使用内置的本地运维模型完成意图识别、skill 推荐、日志/命令输出解读。
 
 ## 三层能力
 
@@ -12,17 +12,18 @@ Linux Ops Agent 是一个面向 Linux 运维场景的诊断与文本解读工具
 2. 本地运维模型层
    - 内置规则化语义模型，识别磁盘、日志、权限、端口、网络、OOM、Nginx upstream、SSH 爆破等运维信号。
    - 能从大段描述中抽取症状、对象、证据、风险级别和建议 skill。
-   - 默认不调用 DeepSeek。
+   - 没有配置 API Key 时不调用 DeepSeek。
 
 3. DeepSeek 可选增强层
-   - 只有显式传入 `--cloud-llm` 时，系统才会尝试调用 DeepSeek。
-   - DeepSeek 不可用时自动退回本地模型。
+   - 默认会读取 `.env` 或环境变量中的 `DEEPSEEK_API_KEY`；如果存在 API Key，系统会自动启用 DeepSeek。
+   - 如果没有 API Key，系统自动使用本地运维模型。
+   - 可以使用 `--no-llm` 强制禁用 DeepSeek，也可以使用 `--cloud-llm` 强制尝试云端增强。
    - 大模型不能返回任意 Shell 命令让系统执行。
 
 4. 运维文本解读层
    - 支持分析大量日志、命令输出、报错信息、配置片段、事故聊天记录。
-   - 默认使用本地运维模型生成中文诊断报告。
-   - 需要更强语言总结时可以加 `--cloud-llm` 使用 DeepSeek。
+   - 默认根据 API Key 自动选择 DeepSeek 或本地运维模型生成中文诊断报告。
+   - 需要强制本地分析时可以加 `--no-llm`。
 
 ## 内置 Skills
 
@@ -109,7 +110,7 @@ journalctl -u nginx --since "1 hour ago" --no-pager | python main.py --analyze-s
 python main.py --analyze-file app.log --analysis-type log --no-llm
 ```
 
-启用 DeepSeek 云端增强：
+强制启用 DeepSeek 云端增强：
 
 ```bash
 python main.py --analyze-file app.log --analysis-type log --cloud-llm
